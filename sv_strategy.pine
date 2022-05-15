@@ -33,7 +33,7 @@ shortEMACrosspoint = ta.crossunder(mafast, maslow)
 basePeriods = 26
 donchian(len) => math.avg(ta.lowest(len), ta.highest(len))
 baseLine = donchian(basePeriods)
-// plot(baseLine, color=color.blue, title="Base Line (Kijun)")
+plot(baseLine, color=color.blue, title="Base Line (Kijun)")
 // TODO: cross in 7 last bars?
 
 longBaseline = low > baseLine
@@ -75,26 +75,29 @@ longChaikin = chaikinIsValid()
      and checkMonotony(chaikinOsc, increase=true, count=4)
 shortChaikin = chaikinIsValid()
      and checkMonotony(chaikinOsc, increase=false, count=4)
+// TODO: Currently Chaikin produces undesired delay.
+// Should be reworked
+chaikinEnabled = input.bool(false, title="Check Chaikin oscillator")
 
 ////////////////////////////////////////////////////////////////////////////////
 // Check conditions to trigger event
 
-isSatisfiedImpl(condition, periods, start) =>
+isSatisfiedImpl(condition, periods, start, enabled=true) =>
     result = false
     for i = start to start + periods - 1
         if condition[i]
             result := true
             break
-    result
+    result or not enabled
 
 isSatisfiedRecently(condition) => isSatisfiedImpl(condition, 5, 0)
 wasSatisfiedRecently(condition) => isSatisfiedImpl(condition, 4, 1)
-isSatisfiedNow(condition) => condition[0]
+isSatisfiedNow(condition, enabled=true) => not enabled or condition[0]
 
 check(emaCrosspoint, baseline, rsi, chaikin) =>
     isSatisfiedRecently(emaCrosspoint)
          and isSatisfiedNow(baseline) and isSatisfiedNow(rsi)
-         and isSatisfiedNow(chaikin)
+         and isSatisfiedNow(chaikin, chaikinEnabled)
 
 shouldTriggerLong = check(longEMACrosspoint, longBaseline, longRSI, longChaikin)
 shouldTriggerShort = check(
@@ -109,13 +112,13 @@ if (wasSatisfiedRecently(shouldTriggerShort))
 // UI and strategy actions
 
 if (shouldTriggerLong)
-    strategy.entry("SV Long", strategy.long, comment="S")
+    strategy.entry("SV Long", strategy.long, comment="L")
     lbl = label.new(bar_index, na)
     label.set_color(lbl, color.blue)
     label.set_style(lbl, label.style_label_up)
     label.set_yloc(lbl, yloc.belowbar)
 if (shouldTriggerShort)
-    strategy.entry("SV Short", strategy.short, comment="L")
+    strategy.entry("SV Short", strategy.short, comment="S")
     lbl = label.new(bar_index, na)
     label.set_color(lbl, color.red)
     label.set_style(lbl, label.style_label_down)
