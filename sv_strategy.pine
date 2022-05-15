@@ -4,7 +4,7 @@
 
 //@version=5
 strategy(title="Sveta & Vera's Strategy", shorttitle="SV Strategy",
-         overlay=true)
+         overlay=true, process_orders_on_close=true)
 
 ////////////////////////////////////////////////////////////////////////////////
 // EMA plots
@@ -33,7 +33,7 @@ shortEMACrosspoint = ta.crossunder(mafast, maslow)
 basePeriods = 26
 donchian(len) => math.avg(ta.lowest(len), ta.highest(len))
 baseLine = donchian(basePeriods)
-plot(baseLine, color=color.blue, title="Base Line (Kijun)")
+// plot(baseLine, color=color.blue, title="Base Line (Kijun)")
 // TODO: cross in 7 last bars?
 
 longBaseline = low > baseLine
@@ -52,6 +52,30 @@ longRSI = rsi > rsiThreshold
 shortRSI = rsi < rsiThreshold
 // TODO: cross in 3 last bars?
 
+// Chaikin
+var chaikinCumVol = 0.
+chaikinCumVol += nz(volume)
+if barstate.islast and chaikinCumVol == 0
+    runtime.error("No volume is provided by the data vendor.")
+chaikinShort = input.int(3, minval=1, title="Chaikin Fast Length")
+chaikinLong = input.int(10, minval=1, title="Chaikin Slow Length")
+chaikinOsc = ta.ema(ta.accdist, chaikinShort) - ta.ema(ta.accdist, chaikinLong)
+// plot(chaikinOsc, title="Chaikin Oscillator", color=color.blue)
+
+chaikinIsValid() => math.abs(chaikinOsc) < 14000
+checkMonotony(series, increase, count) =>
+    result = true
+    for i = 0 to count - 1
+        if increase and series[i] < series[i + 1]
+            result := false
+        if not increase and series[i] > series[i + 1]
+            result := false
+    result
+longChaikin = chaikinIsValid()
+     and checkMonotony(chaikinOsc, increase=true, count=4)
+shortChaikin = chaikinIsValid()
+     and checkMonotony(chaikinOsc, increase=false, count=4)
+
 ////////////////////////////////////////////////////////////////////////////////
 // Check conditions to trigger event
 
@@ -67,12 +91,14 @@ isSatisfiedRecently(condition) => isSatisfiedImpl(condition, 5, 0)
 wasSatisfiedRecently(condition) => isSatisfiedImpl(condition, 4, 1)
 isSatisfiedNow(condition) => condition[0]
 
-check(emaCrosspoint, baseline, rsi) =>
+check(emaCrosspoint, baseline, rsi, chaikin) =>
     isSatisfiedRecently(emaCrosspoint)
          and isSatisfiedNow(baseline) and isSatisfiedNow(rsi)
+         and isSatisfiedNow(chaikin)
 
-shouldTriggerLong = check(longEMACrosspoint, longBaseline, longRSI)
-shouldTriggerShort = check(shortEMACrosspoint, shortBaseline, shortRSI)
+shouldTriggerLong = check(longEMACrosspoint, longBaseline, longRSI, longChaikin)
+shouldTriggerShort = check(
+     shortEMACrosspoint, shortBaseline, shortRSI, shortChaikin)
 // Trigger only for the first time
 if (wasSatisfiedRecently(shouldTriggerLong))
     shouldTriggerLong := false
@@ -82,14 +108,15 @@ if (wasSatisfiedRecently(shouldTriggerShort))
 ////////////////////////////////////////////////////////////////////////////////
 // UI and strategy actions
 
-lbl = label.new(bar_index, na)
 if (shouldTriggerLong)
-    strategy.entry("SV Long", strategy.long, comment="L")
+    strategy.entry("SV Long", strategy.long, comment="S")
+    lbl = label.new(bar_index, na)
     label.set_color(lbl, color.blue)
     label.set_style(lbl, label.style_label_up)
     label.set_yloc(lbl, yloc.belowbar)
 if (shouldTriggerShort)
-    strategy.entry("SV Short", strategy.short, comment="S")
+    strategy.entry("SV Short", strategy.short, comment="L")
+    lbl = label.new(bar_index, na)
     label.set_color(lbl, color.red)
     label.set_style(lbl, label.style_label_down)
     label.set_yloc(lbl, yloc.abovebar)
