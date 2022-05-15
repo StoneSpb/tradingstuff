@@ -8,9 +8,10 @@ strategy(title="Sveta & Vera's Strategy", shorttitle="SV Strategy",
 
 ////////////////////////////////////////////////////////////////////////////////
 // EMA plots
-shortest = ta.ema(close, 5)
-short = ta.ema(close, 30)
-longer = ta.ema(close, 60)
+emaSource = close
+shortest = ta.ema(emaSource, 5)
+short = ta.ema(emaSource, 30)
+longer = ta.ema(emaSource, 60)
 
 plot(shortest, color = color.red, title="Shortest EMA")
 plot(short, color = color.orange, title="Short EMA")
@@ -18,10 +19,10 @@ plot(longer, color = color.aqua, title="Longer EMA")
 
 ////////////////////////////////////////////////////////////////////////////////
 // Moving average, 2-line cross
-fastLength = input.int(5, minval=1, title="Fast Length")
-slowLength = input.int(30, minval=1, title="Slow Length")
-mafast = ta.ema(close, fastLength)
-maslow = ta.ema(close, slowLength)
+fastLength = input.int(5, minval=1, title="EMA Fast Length")
+slowLength = input.int(30, minval=1, title="EMA Slow Length")
+mafast = ta.ema(emaSource, fastLength)
+maslow = ta.ema(emaSource, slowLength)
 
 longEMACrosspoint = ta.crossover(mafast, maslow)
 shortEMACrosspoint = ta.crossunder(mafast, maslow)
@@ -38,7 +39,18 @@ plot(baseLine, color=color.blue, title="Base Line (Kijun)")
 longBaseline = low > baseLine
 shortBaseline = high < baseLine
 
-// TODO: Price should cross RSI 50 line in 3 last bars
+// RSI 50
+rsiLength = input.int(14, minval=1, title="RSI Length")
+rsiSource = close
+rsiUp = ta.rma(math.max(ta.change(rsiSource), 0), rsiLength)
+rsiDown = ta.rma(-math.min(ta.change(rsiSource), 0), rsiLength)
+rsi = rsiDown == 0 ? 100 : rsiUp == 0 ? 0 : 100 - (100 / (1 + rsiUp / rsiDown))
+// plot(rsi, color=color.purple, title="RSI")
+
+rsiThreshold = 50
+longRSI = rsi > rsiThreshold
+shortRSI = rsi < rsiThreshold
+// TODO: cross in 3 last bars?
 
 ////////////////////////////////////////////////////////////////////////////////
 // Check conditions to trigger event
@@ -51,20 +63,35 @@ isSatisfiedImpl(condition, periods, start) =>
             break
     result
 
-isSatisfied(condition) => isSatisfiedImpl(condition, 5, 0)
-wasSatisfied(condition) =>isSatisfiedImpl(condition, 4, 1)
+isSatisfiedRecently(condition) => isSatisfiedImpl(condition, 5, 0)
+wasSatisfiedRecently(condition) => isSatisfiedImpl(condition, 4, 1)
+isSatisfiedNow(condition) => condition[0]
 
-shouldTriggerLong = isSatisfied(longEMACrosspoint) and isSatisfied(longBaseline)
-shouldTriggerShort = isSatisfied(shortEMACrosspoint) and isSatisfied(shortBaseline)
+check(emaCrosspoint, baseline, rsi) =>
+    isSatisfiedRecently(emaCrosspoint)
+         and isSatisfiedNow(baseline) and isSatisfiedNow(rsi)
+
+shouldTriggerLong = check(longEMACrosspoint, longBaseline, longRSI)
+shouldTriggerShort = check(shortEMACrosspoint, shortBaseline, shortRSI)
 // Trigger only for the first time
-if (wasSatisfied(shouldTriggerLong))
+if (wasSatisfiedRecently(shouldTriggerLong))
     shouldTriggerLong := false
-if (wasSatisfied(shouldTriggerShort))
+if (wasSatisfiedRecently(shouldTriggerShort))
     shouldTriggerShort := false
 
+////////////////////////////////////////////////////////////////////////////////
+// UI and strategy actions
+
+lbl = label.new(bar_index, na)
 if (shouldTriggerLong)
     strategy.entry("SV Long", strategy.long, comment="L")
+    label.set_color(lbl, color.blue)
+    label.set_style(lbl, label.style_label_up)
+    label.set_yloc(lbl, yloc.belowbar)
 if (shouldTriggerShort)
     strategy.entry("SV Short", strategy.short, comment="S")
+    label.set_color(lbl, color.red)
+    label.set_style(lbl, label.style_label_down)
+    label.set_yloc(lbl, yloc.abovebar)
 barcolor(shouldTriggerLong or shouldTriggerShort ? color.yellow : na,
          title="Found entry point", editable=true)
