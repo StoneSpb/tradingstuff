@@ -3,7 +3,8 @@
 // © Stonespb
 
 //@version=5
-strategy("SV Strategy", overlay=true)
+strategy(title="Sveta & Vera's Strategy", shorttitle="SV Strategy",
+         overlay=true)
 
 ////////////////////////////////////////////////////////////////////////////////
 // EMA plots
@@ -15,13 +16,12 @@ plot(shortest, color = color.red, title="Shortest EMA")
 plot(short, color = color.orange, title="Short EMA")
 plot(longer, color = color.aqua, title="Longer EMA")
 
+////////////////////////////////////////////////////////////////////////////////
 // Moving average, 2-line cross
 fastLength = input.int(5, minval=1, title="Fast Length")
 slowLength = input.int(30, minval=1, title="Slow Length")
 mafast = ta.ema(close, fastLength)
 maslow = ta.ema(close, slowLength)
-
-// Собираем индикаторы на 5 последних интервалах. Когда все "сложились" за период - ставим точку.
 
 longEMACrosspoint = ta.crossover(mafast, maslow)
 shortEMACrosspoint = ta.crossunder(mafast, maslow)
@@ -40,19 +40,31 @@ shortBaseline = high < baseLine
 
 // TODO: Price should cross RSI 50 line in 3 last bars
 
+////////////////////////////////////////////////////////////////////////////////
+// Check conditions to trigger event
 
-isSatisfied(condition) =>
+isSatisfiedImpl(condition, periods, start) =>
     result = false
-    for i = 0 to 4
+    for i = start to start + periods - 1
         if condition[i]
             result := true
             break
     result
 
+isSatisfied(condition) => isSatisfiedImpl(condition, 5, 0)
+wasSatisfied(condition) =>isSatisfiedImpl(condition, 4, 1)
+
 shouldTriggerLong = isSatisfied(longEMACrosspoint) and isSatisfied(longBaseline)
 shouldTriggerShort = isSatisfied(shortEMACrosspoint) and isSatisfied(shortBaseline)
+// Trigger only for the first time
+if (wasSatisfied(shouldTriggerLong))
+    shouldTriggerLong := false
+if (wasSatisfied(shouldTriggerShort))
+    shouldTriggerShort := false
 
 if (shouldTriggerLong)
     strategy.entry("SV Long", strategy.long, comment="L")
 if (shouldTriggerShort)
     strategy.entry("SV Short", strategy.short, comment="S")
+barcolor(shouldTriggerLong or shouldTriggerShort ? color.yellow : na,
+         title="Found entry point", editable=true)
